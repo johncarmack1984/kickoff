@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kickoff — CDN Edge Lab</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>Kickoff</h1>
+        <span class="subtitle">CDN Edge Cache Lab</span>
+      </header>
+
+      <div id="setup-panel" class="panel">
+        <h2>1. Ingest</h2>
+        <p id="ffmpeg-status">Checking ffmpeg...</p>
+        <div class="row">
+          <button id="btn-pick-file">Pick Video File</button>
+          <button id="btn-use-testsrc">Use Test Source</button>
+        </div>
+        <p id="ingest-status"></p>
+      </div>
+
+      <div id="main-content" class="hidden">
+        <div class="columns">
+          <div class="col col-player">
+            <h2>Player</h2>
+            <div id="video-container">
+              <video id="video" controls></video>
+            </div>
+            <div id="player-info">
+              <span id="current-rendition">—</span>
+              <span id="player-events"></span>
+            </div>
+          </div>
+
+          <div class="col col-controls">
+            <h2>Edge Controls</h2>
+
+            <div class="control-group">
+              <label>Origin Latency (ms)</label>
+              <div class="row">
+                <input type="range" id="latency-slider" min="0" max="1000" value="150" />
+                <span id="latency-value">150</span>
+              </div>
+            </div>
+
+            <div class="control-group">
+              <label>
+                <input type="checkbox" id="chk-collapsing" checked />
+                Request Collapsing
+              </label>
+            </div>
+
+            <div class="control-group">
+              <label>
+                <input type="checkbox" id="chk-token-key" />
+                Include Token in Cache Key
+              </label>
+              <span class="hint">ON = per-viewer keys (tanks hit ratio)</span>
+            </div>
+
+            <div class="control-group">
+              <button id="btn-purge-all">Purge All</button>
+              <div class="row">
+                <input type="text" id="purge-prefix" placeholder="prefix (e.g. 720p/)" />
+                <button id="btn-purge-prefix">Purge Prefix</button>
+              </div>
+            </div>
+
+            <h2>Flash Crowd</h2>
+            <div class="control-group">
+              <div class="row">
+                <label>Viewers:</label>
+                <input type="number" id="viewer-count" value="200" min="1" max="1000" />
+                <button id="btn-flash-crowd">Run</button>
+              </div>
+              <p id="sim-status"></p>
+            </div>
+
+            <button id="btn-reset-stats">Reset Stats</button>
+          </div>
+
+          <div class="col col-stats">
+            <h2>Cache Stats</h2>
+            <table id="stats-table">
+              <tr><td>Edge Hits</td><td id="stat-hits">0</td></tr>
+              <tr><td>Edge Misses</td><td id="stat-misses">0</td></tr>
+              <tr><td>Origin Fetches</td><td id="stat-origin">0</td></tr>
+              <tr><td>Collapsed</td><td id="stat-collapsed">0</td></tr>
+              <tr><td>SWR Refreshes</td><td id="stat-swr">0</td></tr>
+              <tr><td>Hit Ratio</td><td id="stat-hit-ratio">—</td></tr>
+              <tr><td>Collapse Ratio</td><td id="stat-collapse-ratio">—</td></tr>
+              <tr><td>Cache Entries</td><td id="stat-cache-entries">0</td></tr>
+            </table>
+
+            <h3>Hit Ratio</h3>
+            <canvas id="sparkline-hits" width="240" height="60"></canvas>
+
+            <h3>Origin Fetches/s</h3>
+            <canvas id="sparkline-origin" width="240" height="60"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div id="log-panel">
+        <h3>Event Log</h3>
+        <div id="log-output"></div>
+      </div>
+    </div>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

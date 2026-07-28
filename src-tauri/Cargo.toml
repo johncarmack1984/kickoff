@@ -1,0 +1,19 @@
+[package]
+name = "kickoff"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-build = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+http = "1"
+http-range = "0.1"
+percent-encoding = "2"
+tokio = { version = "1", features = ["time", "sync", "rt"] }
+lru = "0.12"
+rfd = "0.15"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }

@@ -1,0 +1,22 @@
+# Local Claude Code config
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+AGENTS.md
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+src-tauri/target/
+
+# Generated HLS content
+output/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+*.swp
