@@ -1,0 +1,20 @@
+[package]
+name = "vmod_kickoff_edge"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Kickoff's edge-cache policy (per-class TTL, SWR grace, token-stripped keys) as a real Varnish VMOD."
+
+# Varnish loads a module as libvmod_<name>. The cdylib is named
+# `vmod_kickoff_edge` so the artifact is `libvmod_kickoff_edge.{so,dylib}`, and
+# the `#[varnish::vmod] mod kickoff_edge` inside is imported as `kickoff_edge`.
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+varnish = "0.7"
+
+# Standalone workspace on purpose: this is an unsafe FFI cdylib that must NOT be
+# pulled into the Tauri app build (`../src-tauri`) or its lint floor. Nothing
+# here ships in the desktop binary — it's the same policy, compiled for Varnish.
+[workspace]
