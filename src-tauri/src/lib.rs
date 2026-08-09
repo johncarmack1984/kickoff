@@ -2,6 +2,7 @@ mod edge;
 mod ingest;
 mod origin;
 mod simulator;
+mod varnish;
 
 use edge::EdgeCache;
 use http::header::*;
@@ -18,6 +19,17 @@ use tauri::Manager;
 struct AppState {
     edge: Arc<EdgeCache>,
     origin: Arc<Origin>,
+    /// The running real-Varnish session, if the user has started one. `None` in
+    /// the default simulated mode.
+    varnish: tokio::sync::Mutex<Option<varnish::VarnishSession>>,
+}
+
+#[derive(Serialize)]
+struct VarnishInfo {
+    /// Base URL the player should load the stream from.
+    base_url: String,
+    cache_port: u16,
+    origin_port: u16,
 }
 
 #[derive(Serialize)]
@@ -176,6 +188,47 @@ async fn run_flash_crowd(
     Ok(simulator::run_flash_crowd(edge, viewer_count, "master.m3u8").await)
 }
 
+#[tauri::command]
+async fn varnish_start(
+    state: tauri::State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<VarnishInfo, String> {
+    let workdir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app data dir: {e}"))?
+        .join("varnish");
+
+    let mut guard = state.varnish.lock().await;
+    // Drop any previous session first (its Drop kills the old varnishd).
+    *guard = None;
+
+    let session = varnish::start(state.origin.clone(), workdir).await?;
+    let info = VarnishInfo {
+        base_url: session.cache_url.clone(),
+        cache_port: session.cache_port,
+        origin_port: session.origin_port,
+    };
+    *guard = Some(session);
+    Ok(info)
+}
+
+#[tauri::command]
+async fn varnish_stop(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    *state.varnish.lock().await = None;
+    Ok(())
+}
+
+#[tauri::command]
+async fn varnish_stats(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<varnish::VarnishStats>, String> {
+    match state.varnish.lock().await.as_ref() {
+        Some(session) => Ok(Some(session.stats()?)),
+        None => Ok(None),
+    }
+}
+
 fn handle_protocol_request(
     edge: Arc<EdgeCache>,
     request: http::Request<Vec<u8>>,
@@ -302,6 +355,7 @@ pub fn run() {
         .manage(AppState {
             edge: edge.clone(),
             origin: origin.clone(),
+            varnish: tokio::sync::Mutex::new(None),
         })
         .register_asynchronous_uri_scheme_protocol(
             "kickoff",
@@ -321,6 +375,9 @@ pub fn run() {
             purge_prefix,
             reset_stats,
             run_flash_crowd,
+            varnish_start,
+            varnish_stop,
+            varnish_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

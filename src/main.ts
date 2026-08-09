@@ -29,10 +29,27 @@ interface SimResult {
   collapse_ratio: number;
 }
 
+interface VarnishInfo {
+  base_url: string;
+  cache_port: number;
+  origin_port: number;
+}
+
+interface VarnishStats {
+  hits: number;
+  misses: number;
+  backend_fetches: number;
+}
+
 const hitHistory: number[] = [];
 const originHistory: number[] = [];
 let lastOriginFetches = 0;
 let statsInterval: number | null = null;
+let hls: Hls | null = null;
+// Where the player loads the stream from. The simulated edge uses the custom
+// `kickoff://` scheme; real-Varnish mode swaps in `http://127.0.0.1:<port>`.
+let streamBase = "kickoff://localhost";
+let varnishMode = false;
 
 function log(msg: string, cls = "log-info") {
   const out = $id("log-output");
@@ -87,6 +104,38 @@ async function init() {
     log(`Token in cache key: ${enabled ? "ON" : "OFF"}`);
   });
 
+  $id("chk-varnish").addEventListener("change", async (e) => {
+    const on = (e.target as HTMLInputElement).checked;
+    const statusEl = $id("varnish-status");
+    if (on) {
+      statusEl.textContent = "starting varnishd…";
+      try {
+        const info = await invoke<VarnishInfo>("varnish_start");
+        streamBase = info.base_url;
+        varnishMode = true;
+        statusEl.textContent = `on — ${info.base_url} (origin :${info.origin_port})`;
+        log(`Real Varnish started at ${info.base_url}`, "log-hit");
+        startPlayer();
+      } catch (err) {
+        (e.target as HTMLInputElement).checked = false;
+        varnishMode = false;
+        statusEl.textContent = `failed: ${err}`;
+        log(`Varnish start failed: ${err}`, "log-miss");
+      }
+    } else {
+      try {
+        await invoke("varnish_stop");
+      } catch {
+        // already gone
+      }
+      varnishMode = false;
+      streamBase = "kickoff://localhost";
+      statusEl.textContent = "off — uses the simulated edge";
+      log("Real Varnish stopped; back to simulated edge");
+      startPlayer();
+    }
+  });
+
   $id("btn-purge-all").addEventListener("click", async () => {
     await invoke("purge_all");
     log("Purge all: cache cleared");
@@ -137,38 +186,45 @@ async function startIngest(path: string | null) {
 
 function startPlayer() {
   const video = $id("video") as HTMLVideoElement;
-  const src = "kickoff://localhost/master.m3u8";
+  const src = `${streamBase}/master.m3u8`;
+
+  // Tear down any existing player so switching cache engines reloads cleanly.
+  if (hls) {
+    hls.destroy();
+    hls = null;
+  }
 
   if (Hls.isSupported()) {
-    const hls = new Hls({
+    const player = new Hls({
       enableWorker: false,
       debug: false,
       maxBufferLength: 10,
       maxMaxBufferLength: 30,
     });
+    hls = player;
 
-    hls.loadSource(src);
-    hls.attachMedia(video);
+    player.loadSource(src);
+    player.attachMedia(video);
 
-    hls.on(Hls.Events.MANIFEST_PARSED, (_ev, data) => {
+    player.on(Hls.Events.MANIFEST_PARSED, (_ev, data) => {
       log(`HLS: ${data.levels.length} quality levels parsed`);
       video.play().catch(() => {});
     });
 
-    hls.on(Hls.Events.LEVEL_SWITCHED, (_ev, data) => {
-      const level = hls.levels[data.level];
+    player.on(Hls.Events.LEVEL_SWITCHED, (_ev, data) => {
+      const level = player.levels[data.level];
       const label = `${level.height}p @ ${Math.round(level.bitrate / 1000)}kbps`;
       $id("current-rendition").textContent = label;
       log(`ABR switch: ${label}`);
     });
 
-    hls.on(Hls.Events.ERROR, (_ev, data) => {
+    player.on(Hls.Events.ERROR, (_ev, data) => {
       if (data.fatal) {
         log(`HLS fatal error: ${data.type} / ${data.details}`, "log-miss");
       }
     });
 
-    hls.on(Hls.Events.FRAG_LOADED, (_ev, data) => {
+    player.on(Hls.Events.FRAG_LOADED, (_ev, data) => {
       const frag = data.frag;
       log(`Segment loaded: level=${frag.level} sn=${frag.sn}`);
     });
@@ -184,6 +240,35 @@ function startStatsPolling() {
   if (statsInterval) clearInterval(statsInterval);
   statsInterval = window.setInterval(async () => {
     try {
+      if (varnishMode) {
+        const vs = await invoke<VarnishStats | null>("varnish_stats");
+        if (vs) {
+          const total = vs.hits + vs.misses;
+          $id("stat-hits").textContent = String(vs.hits);
+          $id("stat-misses").textContent = String(vs.misses);
+          $id("stat-origin").textContent = String(vs.backend_fetches);
+          // Not exposed by varnishstat's basic counters — blank them so stale
+          // simulated numbers don't linger.
+          $id("stat-collapsed").textContent = "—";
+          $id("stat-swr").textContent = "—";
+          $id("stat-collapse-ratio").textContent = "—";
+          $id("stat-cache-entries").textContent = "—";
+          const ratio = total > 0 ? vs.hits / total : 0;
+          $id("stat-hit-ratio").textContent = total > 0 ? (ratio * 100).toFixed(1) + "%" : "—";
+
+          hitHistory.push(ratio);
+          if (hitHistory.length > 60) hitHistory.shift();
+          drawSparkline("sparkline-hits", hitHistory, 0, 1, "#4ade80");
+
+          const delta = vs.backend_fetches - lastOriginFetches;
+          lastOriginFetches = vs.backend_fetches;
+          originHistory.push(delta);
+          if (originHistory.length > 60) originHistory.shift();
+          drawSparkline("sparkline-origin", originHistory, 0, undefined, "#f87171");
+        }
+        return;
+      }
+
       const s = await invoke<Stats>("get_stats");
       $id("stat-hits").textContent = String(s.edge_hits);
       $id("stat-misses").textContent = String(s.edge_misses);

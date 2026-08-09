@@ -73,10 +73,14 @@ Watch the log panel after content has been cached and the manifest TTL (2s) expi
 
 The first line proves the edge returned stale content immediately. The second proves the background refresh completed and updated the cache.
 
+## Real Varnish mode (optional)
+
+The edge above is simulated so its behavior is visible on screen. For the real thing, `edge-vmod/` compiles the exact same policy (per-class TTL, SWR grace, token-stripped keys) into a [Varnish](https://varnish-cache.org/) VMOD. Build it (`cargo build --release` in `edge-vmod/`, needs `brew install varnish`), then tick **Use real Varnish** in Edge Controls: the app spawns a real HTTP origin + `varnishd` loaded with the module, repoints the player at Varnish's port, and shows live `varnishstat` counters. See [`edge-vmod/README.md`](edge-vmod/README.md).
+
 ## Honest limits
 
-- **Single process** — origin, edge, and player all live in the same Tauri app. There is no real network hop; latency is `tokio::time::sleep`.
-- **Simulated network** — no actual HTTP servers or TCP connections. The edge is a Tauri custom protocol handler; the origin is a function call with artificial delay.
+- **Single process (simulated mode)** — by default origin, edge, and player all live in the same Tauri app. There is no real network hop; latency is `tokio::time::sleep`. (Real Varnish mode, above, does use a real origin server + `varnishd`.)
+- **Simulated network (simulated mode)** — no actual HTTP servers or TCP connections. The edge is a Tauri custom protocol handler; the origin is a function call with artificial delay.
 - **No persistence** — cache is in-memory, lost on restart.
 - **No real auth** — the `?token=` parameter is a stub for demonstrating cache-key fragmentation, not a real authentication system.
 - **macOS only tested** — built and tested on macOS (Apple Silicon). Should build on Linux/Windows but untested.
@@ -111,6 +115,12 @@ kickoff/
 │       ├── ingest.rs        # ffmpeg probe + ABR transcoding
 │       ├── origin.rs        # Origin server (disk + latency)
 │       ├── edge.rs          # Edge cache (LRU, TTL, SWR, collapsing)
-│       └── simulator.rs    # Flash crowd simulator
+│       ├── simulator.rs    # Flash crowd simulator
+│       └── varnish.rs      # Optional real-Varnish mode (spawns varnishd + HTTP origin)
+├── edge-vmod/              # The same edge policy as a real Varnish VMOD
+│   ├── src/policy.rs        # Pure policy (unit-tested), mirrored from edge.rs
+│   ├── src/lib.rs           # #[varnish::vmod] wrapper
+│   ├── tests/*.vtc          # End-to-end tests against a real Varnish
+│   └── example.vcl          # Standalone VCL wiring
 └── README.md
 ```

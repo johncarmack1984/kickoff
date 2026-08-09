@@ -19,7 +19,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src ipc: http://ipc.localhost kickoff: http://kickoff.localhost ws: wss:; media-src kickoff: http://kickoff.localhost blob: 'self'; worker-src blob: 'self'"
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src ipc: http://ipc.localhost kickoff: http://kickoff.localhost http://127.0.0.1:* http://localhost:* ws: wss:; media-src kickoff: http://kickoff.localhost http://127.0.0.1:* http://localhost:* blob: 'self'; worker-src blob: 'self'"
     }
   },
   "bundle": {

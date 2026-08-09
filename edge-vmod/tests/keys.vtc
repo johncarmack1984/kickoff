@@ -1,0 +1,40 @@
+varnishtest "kickoff_edge: token-stripped key collapses viewers onto one object"
+
+# The backend must be hit EXACTLY ONCE: two viewers with different ?token=
+# values normalize to the same cache key, so the second is a hit.
+server s1 {
+    rxreq
+    expect req.url == "/master.m3u8?token=viewer-a"
+    txresp -hdr "Content-Type: application/vnd.apple.mpegurl" -bodylen 7
+} -start
+
+varnish v1 -vcl+backend {
+    import kickoff_edge from "${vmod}";
+
+    sub vcl_hash {
+        hash_data(kickoff_edge.normalize_key(req.url));
+        return (lookup);
+    }
+    sub vcl_backend_response {
+        set beresp.ttl = kickoff_edge.ttl(bereq.url);
+        set beresp.grace = kickoff_edge.swr_grace();
+        set beresp.http.X-Kickoff-Class = kickoff_edge.class(bereq.url);
+    }
+    sub vcl_deliver {
+        set resp.http.X-Cache = obj.hits > 0 ? "HIT" : "MISS";
+    }
+} -start
+
+client c1 {
+    txreq -url "/master.m3u8?token=viewer-a"
+    rxresp
+    expect resp.status == 200
+    expect resp.http.X-Cache == "MISS"
+    expect resp.http.X-Kickoff-Class == "manifest"
+
+    # Different token, same object: served from cache, no second backend fetch.
+    txreq -url "/master.m3u8?token=viewer-b"
+    rxresp
+    expect resp.status == 200
+    expect resp.http.X-Cache == "HIT"
+} -run

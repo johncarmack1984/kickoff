@@ -1,0 +1,42 @@
+varnishtest "kickoff_edge: segments classify as 'segment'; real params are NOT collapsed"
+
+# The backend is hit TWICE: `bitrate` is a real param (not `token`), so the two
+# requests keep distinct cache keys and both miss.
+server s1 {
+    rxreq
+    expect req.url == "/seg/1.m4s?bitrate=hi"
+    txresp -hdr "Content-Type: video/iso.segment" -bodylen 10
+
+    rxreq
+    expect req.url == "/seg/1.m4s?bitrate=lo"
+    txresp -hdr "Content-Type: video/iso.segment" -bodylen 10
+} -start
+
+varnish v1 -vcl+backend {
+    import kickoff_edge from "${vmod}";
+
+    sub vcl_hash {
+        hash_data(kickoff_edge.normalize_key(req.url));
+        return (lookup);
+    }
+    sub vcl_backend_response {
+        set beresp.ttl = kickoff_edge.ttl(bereq.url);
+        set beresp.http.X-Kickoff-Class = kickoff_edge.class(bereq.url);
+    }
+    sub vcl_deliver {
+        set resp.http.X-Cache = obj.hits > 0 ? "HIT" : "MISS";
+    }
+} -start
+
+client c1 {
+    txreq -url "/seg/1.m4s?bitrate=hi"
+    rxresp
+    expect resp.status == 200
+    expect resp.http.X-Kickoff-Class == "segment"
+    expect resp.http.X-Cache == "MISS"
+
+    txreq -url "/seg/1.m4s?bitrate=lo"
+    rxresp
+    expect resp.status == 200
+    expect resp.http.X-Cache == "MISS"
+} -run
