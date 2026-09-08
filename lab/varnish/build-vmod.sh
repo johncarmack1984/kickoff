@@ -1,19 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 
-VMOD_SRC="${VMOD_REQWEST_SRC:-$HOME/coding/varnish/vmod-reqwest}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PIN_DIR="$SCRIPT_DIR/vmod"
 OUT_DIR="$SCRIPT_DIR/.vmod-build"
 
-if [ ! -d "$VMOD_SRC" ]; then
-    echo "error: vmod-reqwest source not found at $VMOD_SRC"
-    echo "set VMOD_REQWEST_SRC to the checkout containing copy_headers_to_resp()"
-    exit 1
-fi
+REV="$(sed -n 's/.*rev = "\([0-9a-f]*\)".*/\1/p' "$PIN_DIR/Cargo.toml")"
+echo "=== Building vmod-reqwest @ ${REV:0:12} (pinned in vmod/Cargo.toml) ==="
 
-echo "=== Building vmod-reqwest from $VMOD_SRC ==="
-
-docker build -t vmod-reqwest-builder -f - "$SCRIPT_DIR" <<'DOCKERFILE'
+# Dockerfile from stdin, no build context: nothing from the host is baked in.
+docker build -t vmod-reqwest-builder - <<'DOCKERFILE'
 FROM varnish:latest
 USER root
 RUN set -e; \
@@ -25,14 +21,20 @@ RUN set -e; \
     rm -rf /var/lib/apt/lists/*
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
 ENV PATH="/root/.cargo/bin:$PATH"
-WORKDIR /app
+ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
+WORKDIR /build
 DOCKERFILE
 
 mkdir -p "$OUT_DIR"
 
+# vmod/ is a pin-only Cargo package: its git dependency on vmod_reqwest carries
+# the rev, Cargo.lock carries the rest of the tree, and `cargo build -p` builds
+# the pinned checkout as the cdylib it declares. --locked refuses to drift.
 docker run --rm \
-    -v "$VMOD_SRC:/app-src:ro" \
+    -v "$PIN_DIR:/pin:ro" \
     -v "$OUT_DIR:/out" \
-    -e CARGO_TARGET_DIR=/tmp/target \
     vmod-reqwest-builder \
-    sh -c 'cp -a /app-src /build && cd /build && cargo build 2>&1 && cp /tmp/target/debug/libvmod_reqwest.so /out/ && echo "=== vmod built ===" && ls -lh /out/libvmod_reqwest.so'
+    sh -c 'cp /pin/Cargo.toml /pin/Cargo.lock /build/ && cp -r /pin/src /build/src \
+        && cargo build --release --locked -p vmod_reqwest \
+        && cp target/release/libvmod_reqwest.so /out/ \
+        && echo "=== vmod built ===" && ls -lh /out/libvmod_reqwest.so'

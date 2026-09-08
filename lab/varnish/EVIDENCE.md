@@ -1,7 +1,8 @@
 # Evidence
 
 Captured from a clean `docker compose up` on macOS (Apple Silicon, OrbStack).
-Varnish 9.0.3, vmod-reqwest built from varnish-rs/vmod-reqwest#40 (copy_headers_to_resp branch).
+Varnish 9.0.3, vmod-reqwest built from the `copy_headers_to_resp` branch of varnish-rs/vmod-reqwest#40 (since merged as [`2279a12`](https://github.com/varnish-rs/vmod-reqwest/commit/2279a1238cd47ca36901d6d6b7dbeedaf1f46dd4) on `main`, which is what `vmod/Cargo.toml` now pins).
+Re-verified 2026-09-08 against the pinned build (`build-vmod.sh` → `cargo build --release --locked -p vmod_reqwest` @ `2279a12`): same Varnish 9.0.3, `smoke.sh` 9 passed, 0 failed.
 
 ## docker compose ps
 

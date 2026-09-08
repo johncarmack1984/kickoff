@@ -1,0 +1,18 @@
+# Pins the vmod-reqwest source the edge-auth lab builds. This package is never
+# compiled itself: build-vmod.sh runs `cargo build -p vmod_reqwest` here, which
+# builds the pinned git checkout (a cdylib) and leaves libvmod_reqwest.so in
+# target/release/. Bump `rev` to move the lab to a newer upstream commit;
+# Cargo.lock pins the rest of the dependency tree.
+[package]
+name = "kickoff-lab-vmod"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# copy_headers_to_resp() landed in varnish-rs/vmod-reqwest#40 (merged
+# 2026-09-01). No tagged release contains it yet, so pin the merge commit.
+vmod_reqwest = { git = "https://github.com/varnish-rs/vmod-reqwest", rev = "2279a1238cd47ca36901d6d6b7dbeedaf1f46dd4" }
+
+# Standalone workspace: keep this out of the Tauri app and edge-vmod builds.
+[workspace]

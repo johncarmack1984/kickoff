@@ -11,6 +11,7 @@ node_modules/
 dist/
 src-tauri/target/
 edge-vmod/target/
+lab/varnish/vmod/target/
 lab/varnish/.vmod-build/
 
 # Generated HLS content

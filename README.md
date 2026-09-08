@@ -90,7 +90,7 @@ bash smoke.sh      # curl-driven proof of all four behaviors
 docker compose down
 ```
 
-`run.sh` builds `libvmod_reqwest.so` from a local vmod-reqwest checkout (defaults to `~/coding/varnish/vmod-reqwest`; override with `VMOD_REQWEST_SRC`). The build happens in Docker against `varnish:latest` so the ABI matches the runtime.
+`run.sh` builds `libvmod_reqwest.so` from the upstream commit pinned in `vmod/Cargo.toml` (a git dependency with `rev`), with `vmod/Cargo.lock` pinning the rest of the tree. `copy_headers_to_resp()` merged in [varnish-rs/vmod-reqwest#40](https://github.com/varnish-rs/vmod-reqwest/pull/40) and no tagged release includes it yet, so the pin is the merge commit on `main`. The build happens in Docker against `varnish:latest` so the ABI matches the runtime. To move to a newer upstream commit, bump `rev` and run `cargo generate-lockfile` in `vmod/`.
 
 Tick **Edge Lab (Docker)** in Edge Controls to point the hls.js player at `http://localhost:8080` while compose is running.
 
@@ -142,6 +142,8 @@ kickoff/
 ├── lab/varnish/            # Docker-based edge auth sideband lab
 │   ├── docker-compose.yml   # origin + entitlement + edge (varnish)
 │   ├── default.vcl          # Auth sideband VCL using vmod-reqwest
+│   ├── vmod/Cargo.toml      # Pins vmod-reqwest to an upstream commit (git + rev)
+│   ├── build-vmod.sh        # Builds the pinned vmod in Docker
 │   ├── smoke.sh             # curl-driven proof of the four behaviors
 │   └── run.sh               # Build vmod + compose up + readiness check
 └── README.md
