@@ -1,0 +1,35 @@
+services:
+  origin:
+    build:
+      context: .
+      dockerfile: Dockerfile.origin
+    expose:
+      - "80"
+
+  entitlement:
+    image: python:3-slim
+    volumes:
+      - ./entitlement.py:/app/entitlement.py:ro
+    command: ["python3", "/app/entitlement.py"]
+    expose:
+      - "8000"
+
+  edge:
+    image: varnish:latest
+    volumes:
+      - ./.vmod-build/libvmod_reqwest.so:/vmods/libvmod_reqwest.so:ro
+      - ./default.vcl:/etc/varnish/default.vcl:ro
+    command:
+      - varnishd
+      - "-F"
+      - "-f"
+      - "/etc/varnish/default.vcl"
+      - "-a"
+      - ":80"
+      - "-s"
+      - "malloc,256m"
+    ports:
+      - "8080:80"
+    depends_on:
+      - origin
+      - entitlement

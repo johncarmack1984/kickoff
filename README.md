@@ -77,12 +77,29 @@ The first line proves the edge returned stale content immediately. The second pr
 
 The edge above is simulated so its behavior is visible on screen. For the real thing, `edge-vmod/` compiles the exact same policy (per-class TTL, SWR grace, token-stripped keys) into a [Varnish](https://varnish-cache.org/) VMOD. Build it (`cargo build --release` in `edge-vmod/`, needs `brew install varnish`), then tick **Use real Varnish** in Edge Controls: the app spawns a real HTTP origin + `varnishd` loaded with the module, repoints the player at Varnish's port, and shows live `varnishstat` counters. See [`edge-vmod/README.md`](edge-vmod/README.md).
 
+## Edge auth sideband lab (Docker)
+
+`lab/varnish/` runs the "auth at the edge, origin stays dumb" pattern used by streaming CDNs, with real Varnish + [vmod-reqwest](https://github.com/varnish-rs/vmod-reqwest) doing the work. Three containers: a static HLS origin (ffmpeg test pattern), a tiny entitlement service, and Varnish as the edge. The edge intercepts the first request of a session, makes a sideband HTTP call to the entitlement service, and copies the resulting `Set-Cookie` headers onto the response using `copy_headers_to_resp()` — each cookie lands as its own header line, so the `Expires` date's comma never breaks anything. Subsequent requests carry the session cookie and skip the sideband entirely.
+
+The VCL also sets a `CMSD-Dynamic` header per CTA-5006 as a second demonstration of multi-value-safe header handling via RFC 8941 structured fields.
+
+```sh
+cd lab/varnish
+bash run.sh        # builds vmod, starts compose, waits for readiness
+bash smoke.sh      # curl-driven proof of all four behaviors
+docker compose down
+```
+
+`run.sh` builds `libvmod_reqwest.so` from the upstream commit pinned in `vmod/Cargo.toml` (a git dependency with `rev`), with `vmod/Cargo.lock` pinning the rest of the tree. `copy_headers_to_resp()` merged in [varnish-rs/vmod-reqwest#40](https://github.com/varnish-rs/vmod-reqwest/pull/40) and no tagged release includes it yet, so the pin is the merge commit on `main`. The build happens in Docker against `varnish:latest` so the ABI matches the runtime. To move to a newer upstream commit, bump `rev` and run `cargo generate-lockfile` in `vmod/`.
+
+Tick **Edge Lab (Docker)** in Edge Controls to point the hls.js player at `http://localhost:8080` while compose is running.
+
 ## Honest limits
 
 - **Single process (simulated mode)** — by default origin, edge, and player all live in the same Tauri app. There is no real network hop; latency is `tokio::time::sleep`. (Real Varnish mode, above, does use a real origin server + `varnishd`.)
 - **Simulated network (simulated mode)** — no actual HTTP servers or TCP connections. The edge is a Tauri custom protocol handler; the origin is a function call with artificial delay.
 - **No persistence** — cache is in-memory, lost on restart.
-- **No real auth** — the `?token=` parameter is a stub for demonstrating cache-key fragmentation, not a real authentication system.
+- **No real auth (simulated mode)** — the `?token=` parameter is a stub for demonstrating cache-key fragmentation, not a real authentication system. The Docker edge lab (`lab/varnish/`) adds a sideband auth flow with real cookies, but the entitlement service is a hardcoded demo — it is not a security boundary.
 - **macOS only tested** — built and tested on macOS (Apple Silicon). Should build on Linux/Windows but untested.
 
 ## 90-second demo script
@@ -122,5 +139,12 @@ kickoff/
 │   ├── src/lib.rs           # #[varnish::vmod] wrapper
 │   ├── tests/*.vtc          # End-to-end tests against a real Varnish
 │   └── example.vcl          # Standalone VCL wiring
+├── lab/varnish/            # Docker-based edge auth sideband lab
+│   ├── docker-compose.yml   # origin + entitlement + edge (varnish)
+│   ├── default.vcl          # Auth sideband VCL using vmod-reqwest
+│   ├── vmod/Cargo.toml      # Pins vmod-reqwest to an upstream commit (git + rev)
+│   ├── build-vmod.sh        # Builds the pinned vmod in Docker
+│   ├── smoke.sh             # curl-driven proof of the four behaviors
+│   └── run.sh               # Build vmod + compose up + readiness check
 └── README.md
 ```

@@ -50,6 +50,7 @@ let hls: Hls | null = null;
 // `kickoff://` scheme; real-Varnish mode swaps in `http://127.0.0.1:<port>`.
 let streamBase = "kickoff://localhost";
 let varnishMode = false;
+let edgeLabMode = false;
 
 function log(msg: string, cls = "log-info") {
   const out = $id("log-output");
@@ -132,6 +133,31 @@ async function init() {
       streamBase = "kickoff://localhost";
       statusEl.textContent = "off — uses the simulated edge";
       log("Real Varnish stopped; back to simulated edge");
+      startPlayer();
+    }
+  });
+
+  $id("chk-edge-lab").addEventListener("change", (e) => {
+    const on = (e.target as HTMLInputElement).checked;
+    const statusEl = $id("edge-lab-status");
+    if (on) {
+      const vChk = $id("chk-varnish") as HTMLInputElement;
+      if (vChk.checked) {
+        vChk.checked = false;
+        invoke("varnish_stop").catch(() => {});
+        varnishMode = false;
+        $id("varnish-status").textContent = "off — uses the simulated edge";
+      }
+      streamBase = "http://localhost:8080";
+      edgeLabMode = true;
+      statusEl.textContent = "on — streaming from localhost:8080";
+      log("Edge Lab: player pointed at Docker edge (localhost:8080)");
+      startPlayer();
+    } else {
+      edgeLabMode = false;
+      streamBase = "kickoff://localhost";
+      statusEl.textContent = "off — run lab/varnish/run.sh first";
+      log("Edge Lab off: back to simulated edge");
       startPlayer();
     }
   });
@@ -240,6 +266,17 @@ function startStatsPolling() {
   if (statsInterval) clearInterval(statsInterval);
   statsInterval = window.setInterval(async () => {
     try {
+      if (edgeLabMode) {
+        $id("stat-hits").textContent = "—";
+        $id("stat-misses").textContent = "—";
+        $id("stat-origin").textContent = "—";
+        $id("stat-collapsed").textContent = "—";
+        $id("stat-swr").textContent = "—";
+        $id("stat-hit-ratio").textContent = "—";
+        $id("stat-collapse-ratio").textContent = "—";
+        $id("stat-cache-entries").textContent = "—";
+        return;
+      }
       if (varnishMode) {
         const vs = await invoke<VarnishStats | null>("varnish_stats");
         if (vs) {
